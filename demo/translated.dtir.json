@@ -1,0 +1,457 @@
+{
+  "irVersion": "0.1",
+  "source": {
+    "format": "docx",
+    "fileName": "mixed-nl-fr-de-tricky.docx",
+    "sha256": "10ada05dcfb414d5ef3d1cdd75f64ca075ef497a17beed65fdf1331fee69c30b",
+    "byteSize": 3382
+  },
+  "language": {
+    "default": {
+      "value": "nl-NL",
+      "source": "container-default"
+    },
+    "target": "en-GB",
+    "multilingual": {
+      "isMultilingual": true,
+      "score": 0.75,
+      "method": "per-segment",
+      "languagesPresent": [
+        "nl-NL",
+        "fr-FR",
+        "de-DE",
+        "en-US"
+      ]
+    }
+  },
+  "segments": [
+    {
+      "id": "seg_58a194220a",
+      "order": 0,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[1]",
+          "runIds": [
+            "seg_58a194220a-r0"
+          ]
+        }
+      },
+      "role": "heading",
+      "text": {
+        "source": "Jaarverslag 2025",
+        "hasInlineFormatting": false,
+        "space": "default"
+      },
+      "language": {
+        "value": "nl-NL",
+        "confidence": 0.95,
+        "source": "tag",
+        "candidates": [
+          {
+            "value": "nl-NL",
+            "confidence": 0.95
+          }
+        ]
+      },
+      "translatable": true,
+      "skipReason": null,
+      "group": "nl-NL",
+      "context": {
+        "prev": null,
+        "next": "seg_c1b8e24f1b",
+        "parent": null
+      },
+      "translation": {
+        "text": "Annual report 2025",
+        "engine": "deepl",
+        "sourceLangUsed": "nl-NL",
+        "targetLang": "en-GB",
+        "at": "2026-06-09T03:01:35.327Z"
+      },
+      "quality": null
+    },
+    {
+      "id": "seg_c1b8e24f1b",
+      "order": 1,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[2]",
+          "runIds": [
+            "seg_c1b8e24f1b-r0",
+            "seg_c1b8e24f1b-r1",
+            "seg_c1b8e24f1b-r2"
+          ]
+        }
+      },
+      "role": "body",
+      "text": {
+        "source": "Les résultats du premier trimestre dépassent les prévisions.",
+        "hasInlineFormatting": true,
+        "runs": [
+          {
+            "runId": "seg_c1b8e24f1b-r0",
+            "start": 0,
+            "end": 14
+          },
+          {
+            "runId": "seg_c1b8e24f1b-r1",
+            "start": 14,
+            "end": 35
+          },
+          {
+            "runId": "seg_c1b8e24f1b-r2",
+            "start": 35,
+            "end": 60
+          }
+        ],
+        "space": "preserve"
+      },
+      "language": {
+        "value": "fr-FR",
+        "confidence": 0.95,
+        "source": "tag",
+        "candidates": [
+          {
+            "value": "fr-FR",
+            "confidence": 0.95
+          }
+        ]
+      },
+      "translatable": true,
+      "skipReason": null,
+      "group": "fr-FR",
+      "context": {
+        "prev": "seg_58a194220a",
+        "next": "seg_a71364e203",
+        "parent": null
+      },
+      "translation": {
+        "text": "First-quarter results exceed forecasts.",
+        "engine": "deepl",
+        "sourceLangUsed": "fr-FR",
+        "targetLang": "en-GB",
+        "at": "2026-06-09T03:01:35.327Z"
+      },
+      "quality": null
+    },
+    {
+      "id": "seg_a71364e203",
+      "order": 2,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[3]",
+          "runIds": [
+            "seg_a71364e203-r0"
+          ]
+        }
+      },
+      "role": "body",
+      "text": {
+        "source": "Die Produktion wurde im April vollständig automatisiert.",
+        "hasInlineFormatting": false,
+        "space": "default"
+      },
+      "language": {
+        "value": "de-DE",
+        "confidence": 1,
+        "source": "detect",
+        "candidates": [
+          {
+            "value": "de-DE",
+            "confidence": 1
+          }
+        ]
+      },
+      "translatable": true,
+      "skipReason": null,
+      "group": "de-DE",
+      "context": {
+        "prev": "seg_c1b8e24f1b",
+        "next": "seg_d3b7d4755b",
+        "parent": null
+      },
+      "translation": {
+        "text": "Production was fully automated in April.",
+        "engine": "deepl",
+        "sourceLangUsed": "de-DE",
+        "targetLang": "en-GB",
+        "at": "2026-06-09T03:01:35.327Z"
+      },
+      "quality": null
+    },
+    {
+      "id": "seg_d3b7d4755b",
+      "order": 3,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[4]",
+          "runIds": [
+            "seg_d3b7d4755b-r0"
+          ]
+        }
+      },
+      "role": "heading",
+      "text": {
+        "source": "Inhoudsopgave",
+        "hasInlineFormatting": false,
+        "space": "default"
+      },
+      "language": {
+        "value": "nl-NL",
+        "confidence": 0.95,
+        "source": "tag",
+        "candidates": [
+          {
+            "value": "nl-NL",
+            "confidence": 0.95
+          }
+        ]
+      },
+      "translatable": true,
+      "skipReason": null,
+      "group": "nl-NL",
+      "context": {
+        "prev": "seg_a71364e203",
+        "next": "seg_65a3d4bd42",
+        "parent": null
+      },
+      "translation": {
+        "text": "Table of contents",
+        "engine": "deepl",
+        "sourceLangUsed": "nl-NL",
+        "targetLang": "en-GB",
+        "at": "2026-06-09T03:01:35.327Z"
+      },
+      "quality": null
+    },
+    {
+      "id": "seg_65a3d4bd42",
+      "order": 4,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[5]",
+          "runIds": [
+            "seg_65a3d4bd42-r0",
+            "seg_65a3d4bd42-r1"
+          ]
+        }
+      },
+      "role": "toc",
+      "text": {
+        "source": "Resultaten\t3",
+        "hasInlineFormatting": true,
+        "runs": [
+          {
+            "runId": "seg_65a3d4bd42-r0",
+            "start": 0,
+            "end": 10
+          },
+          {
+            "runId": "seg_65a3d4bd42-r1",
+            "start": 10,
+            "end": 12
+          }
+        ],
+        "space": "preserve"
+      },
+      "language": {
+        "value": null,
+        "confidence": 0,
+        "source": "default"
+      },
+      "translatable": false,
+      "skipReason": "field",
+      "group": null,
+      "context": {
+        "prev": "seg_d3b7d4755b",
+        "next": "seg_a8696c8dfa",
+        "parent": null
+      },
+      "translation": null,
+      "quality": null
+    },
+    {
+      "id": "seg_a8696c8dfa",
+      "order": 5,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[6]",
+          "runIds": [
+            "seg_a8696c8dfa-r0"
+          ]
+        }
+      },
+      "role": "body",
+      "text": {
+        "source": "Overview 概要",
+        "hasInlineFormatting": false,
+        "space": "default"
+      },
+      "language": {
+        "value": "en-US",
+        "confidence": 0.95,
+        "source": "tag",
+        "candidates": [
+          {
+            "value": "en-US",
+            "confidence": 0.95
+          },
+          {
+            "value": "ja-JP",
+            "confidence": 0.5
+          }
+        ]
+      },
+      "translatable": true,
+      "skipReason": null,
+      "group": "en-US",
+      "context": {
+        "prev": "seg_65a3d4bd42",
+        "next": "seg_3f4a67c296",
+        "parent": null
+      },
+      "translation": {
+        "text": "Overview 概要",
+        "engine": "deepl",
+        "sourceLangUsed": "en-US",
+        "targetLang": "en-GB",
+        "at": "2026-06-09T03:01:35.327Z"
+      },
+      "quality": null
+    },
+    {
+      "id": "seg_3f4a67c296",
+      "order": 6,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/document.xml",
+          "path": "/w:body/w:p[7]",
+          "runIds": [
+            "seg_3f4a67c296-r0"
+          ]
+        }
+      },
+      "role": "body",
+      "text": {
+        "source": "€ 1.250.000",
+        "hasInlineFormatting": false,
+        "space": "preserve"
+      },
+      "language": {
+        "value": null,
+        "confidence": 0,
+        "source": "detect"
+      },
+      "translatable": false,
+      "skipReason": "numeric",
+      "group": null,
+      "context": {
+        "prev": "seg_a8696c8dfa",
+        "next": "seg_dbd8855e2a",
+        "parent": null
+      },
+      "translation": null,
+      "quality": null
+    },
+    {
+      "id": "seg_dbd8855e2a",
+      "order": 7,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/header1.xml",
+          "path": "/w:hdr/w:p[1]",
+          "runIds": [
+            "seg_dbd8855e2a-r0"
+          ]
+        }
+      },
+      "role": "header",
+      "text": {
+        "source": "Vertrouwelijk",
+        "hasInlineFormatting": false,
+        "space": "default"
+      },
+      "language": {
+        "value": "nl-NL",
+        "confidence": 0.95,
+        "source": "tag",
+        "candidates": [
+          {
+            "value": "nl-NL",
+            "confidence": 0.95
+          }
+        ]
+      },
+      "translatable": true,
+      "skipReason": null,
+      "group": "nl-NL",
+      "context": {
+        "prev": "seg_3f4a67c296",
+        "next": "seg_96b7eef2eb",
+        "parent": null
+      },
+      "translation": {
+        "text": "Confidential",
+        "engine": "deepl",
+        "sourceLangUsed": "nl-NL",
+        "targetLang": "en-GB",
+        "at": "2026-06-09T03:01:35.327Z"
+      },
+      "quality": null
+    },
+    {
+      "id": "seg_96b7eef2eb",
+      "order": 8,
+      "anchor": {
+        "format": "docx",
+        "ref": {
+          "part": "word/footer1.xml",
+          "path": "/w:ftr/w:p[1]",
+          "runIds": [
+            "seg_96b7eef2eb-r0"
+          ]
+        }
+      },
+      "role": "footer",
+      "text": {
+        "source": "1",
+        "hasInlineFormatting": false,
+        "space": "default"
+      },
+      "language": {
+        "value": null,
+        "confidence": 0,
+        "source": "default"
+      },
+      "translatable": false,
+      "skipReason": "field",
+      "group": null,
+      "context": {
+        "prev": "seg_dbd8855e2a",
+        "next": null,
+        "parent": null
+      },
+      "translation": null,
+      "quality": null
+    }
+  ],
+  "stats": {
+    "segmentCount": 9,
+    "translatableCount": 6,
+    "groupCount": 4
+  }
+}
