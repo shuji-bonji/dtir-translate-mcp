@@ -11,7 +11,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { DeeplHttpTranslator, translateDtir } from './translate.js';
-import type { IRDocument } from './dtir.js';
+import type { IRDocument } from '@shuji-bonji/doc-translation-ir';
 
 const server = new McpServer({ name: 'dtir-translate-mcp', version: '0.0.1' });
 

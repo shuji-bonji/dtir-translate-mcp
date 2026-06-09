@@ -15,7 +15,7 @@ import type {
   ErrorSeverity,
   IRDocument,
   IRSegment,
-} from './dtir.js';
+} from '@shuji-bonji/doc-translation-ir';
 
 export interface TranslateBatchOptions {
   /** BCP47。null/未指定でエンジン自動判定。 */

@@ -1,15 +1,15 @@
 /**
- * vitest spec — translateDtir の主要不変条件（mock Translator）。
- * 実 DeepL を使う end-to-end は test/pipeline-e2e.ts（npm run test:e2e）。
+ * vitest spec — translateDtir の主要不変条件（mock Translator・reader 非依存）。
+ * 入力は doc-translation-ir 同梱の reader 出力 DTIR（静的）。
+ * 実 DeepL を使う end-to-end は dtir-docx-pipeline リポジトリに在る。
  */
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
-import { docxToDtir } from '../../dtir-ooxml-reader-mcp/src/reader.js';
-import { validateDtir } from '../../doc-translation-ir/tools/validate-dtir.js';
+import { readerDtirPath, schemaPath } from '@shuji-bonji/doc-translation-ir/fixtures';
+import { validateDtir } from '@shuji-bonji/doc-translation-ir/validate';
+import type { IRDocument } from '@shuji-bonji/doc-translation-ir';
 import {
   StaticMapTranslator,
   groupForTranslation,
@@ -18,10 +18,10 @@ import {
   type Translator,
 } from '../src/translate.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const irRoot = resolve(here, '../../doc-translation-ir');
-const fixture = resolve(irRoot, 'fixtures/docx/mixed-nl-fr-de-tricky.docx');
-const schema = JSON.parse(readFileSync(resolve(irRoot, 'schema/dtir-0.1.schema.json'), 'utf8'));
+const TARGET = 'en-GB';
+/** 同梱の reader 出力 DTIR を毎回フレッシュに読む（translateDtir は破壊的更新）。 */
+const loadDtir = () => JSON.parse(readFileSync(readerDtirPath, 'utf8')) as IRDocument;
+const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
 /** バッチ呼び出しごとに source 言語と件数を記録する spy。 */
 class SpyTranslator implements Translator {
@@ -40,20 +40,18 @@ const mockEval: Evaluator = {
 
 describe('translateDtir', () => {
   it('batches by language group (言語数ぶんの呼び出し)', async () => {
-    const dtir = await docxToDtir(readFileSync(fixture), { targetLang: 'en-GB' });
+    const dtir = loadDtir();
     const groups = groupForTranslation(dtir);
     const spy = new SpyTranslator();
-    const { stats } = await translateDtir(dtir, spy, {});
-    // バッチ呼び出し回数＝distinct group 数（段落数ではない）
-    expect(spy.calls.length).toBe(groups.size);
+    const { stats } = await translateDtir(dtir, spy, { targetLang: TARGET });
+    expect(spy.calls.length).toBe(groups.size); // 段落数ではなく言語グループ数
     expect(stats.batchCalls).toBe(groups.size);
-    // 各バッチの source は単一言語
-    for (const c of spy.calls) expect(c.targetLang).toBe('en-GB');
+    for (const c of spy.calls) expect(c.targetLang).toBe(TARGET);
   });
 
   it('preserves boundaries: each translatable segment gets its own translation', async () => {
-    const dtir = await docxToDtir(readFileSync(fixture), { targetLang: 'en-GB' });
-    await translateDtir(dtir, new SpyTranslator(), {});
+    const dtir = loadDtir();
+    await translateDtir(dtir, new SpyTranslator(), { targetLang: TARGET });
     for (const s of dtir.segments) {
       if (s.translatable) {
         expect(s.translation).not.toBeNull();
@@ -65,14 +63,16 @@ describe('translateDtir', () => {
   });
 
   it('throws on boundary violation (戻り配列長の不一致)', async () => {
-    const dtir = await docxToDtir(readFileSync(fixture), { targetLang: 'en-GB' });
     const bad: Translator = { async translateBatch() { return []; } };
-    await expect(translateDtir(dtir, bad, {})).rejects.toThrow(/境界破壊/);
+    await expect(translateDtir(loadDtir(), bad, { targetLang: TARGET })).rejects.toThrow(/境界破壊/);
   });
 
   it('fills quality when an evaluator is provided, output stays valid', async () => {
-    const dtir = await docxToDtir(readFileSync(fixture), { targetLang: 'en-GB' });
-    const { stats } = await translateDtir(dtir, new StaticMapTranslator({}), { evaluator: mockEval });
+    const dtir = loadDtir();
+    const { stats } = await translateDtir(dtir, new StaticMapTranslator({}), {
+      targetLang: TARGET,
+      evaluator: mockEval,
+    });
     expect(stats.evaluated).toBe(stats.translated);
     for (const s of dtir.segments) {
       if (s.translatable) expect(s.quality?.score).toBeGreaterThan(0);
