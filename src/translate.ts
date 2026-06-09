@@ -17,6 +17,9 @@ import type {
   IRSegment,
 } from '@shuji-bonji/doc-translation-ir';
 
+// LLM 翻訳エンジン（OpenAI 互換・クラウド/ローカル両対応）を同じサブパスから提供。
+export { LlmTranslator, parseTranslations, type LlmTranslatorOptions } from './llm.js';
+
 export interface TranslateBatchOptions {
   /** BCP47。null/未指定でエンジン自動判定。 */
   sourceLang?: string | null;
