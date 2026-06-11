@@ -18,12 +18,32 @@ import {
   DeeplHttpTranslator,
   LlmTranslator,
   translateDtir,
+  type BatchLimits,
   type Glossary,
   type Translator,
 } from './translate.js';
 import type { IRDocument } from '@shuji-bonji/doc-translation-ir';
 
 const server = new McpServer({ name: 'dtir-translate-mcp', version: '0.0.1' });
+
+/** エンジン別の既定サイズ上限（LLM はコンテキストが狭いので小さめ）。 */
+const ENGINE_LIMIT_PRESET: Record<'deepl' | 'llm', BatchLimits> = {
+  deepl: { maxItems: 50, maxChars: 120_000 },
+  llm: { maxItems: 20, maxChars: 4_000 },
+};
+
+/** 明示引数 > エンジンプリセット。片方だけ指定ならもう片方はプリセット値。 */
+function resolveLimits(
+  engine: 'deepl' | 'llm',
+  maxItems?: number,
+  maxChars?: number,
+): BatchLimits {
+  const preset = ENGINE_LIMIT_PRESET[engine];
+  return {
+    maxItems: maxItems ?? preset.maxItems,
+    maxChars: maxChars ?? preset.maxChars,
+  };
+}
 
 function makeTranslator(
   engine: 'deepl' | 'llm',
@@ -65,6 +85,18 @@ server.tool(
         '用語集 Glossary の JSON（{target, bySource:{lang:[{source,target}]}, deeplIds?:{lang:id}}）。' +
           'LLM はプロンプト注入、DeepL は deeplIds の glossary_id を source 言語別に適用。',
       ),
+    maxItems: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('1バッチの最大セグメント数（既定 deepl=50 / llm=20）。長文の巨大バッチを防ぐ'),
+    maxChars: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('1バッチの最大合計文字数（既定 deepl=120000 / llm=4000）。セグメント境界は割らない'),
   },
   async (args) => {
     try {
@@ -77,6 +109,7 @@ server.tool(
       const { dtir: out, stats } = await translateDtir(dtir, translator, {
         targetLang: args.targetLang,
         engineName: engine,
+        limits: resolveLimits(engine, args.maxItems, args.maxChars),
       });
       return { content: [{ type: 'text', text: JSON.stringify({ engine, stats, dtir: out }) }] };
     } catch (e) {

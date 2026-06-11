@@ -68,6 +68,47 @@ export function groupForTranslation(dtir: IRDocument): Map<string, IRSegment[]> 
   return groups;
 }
 
+/**
+ * 1 バッチ呼び出しのサイズ上限。単一言語の長文が「言語グループ＝1巨大バッチ」になって
+ * DeepL のリクエスト上限や LLM のコンテキスト上限を超えるのを防ぐ
+ * （[[dtir-production-readiness]] ③）。**セグメント境界は割らない**＝チャンクは常に
+ * セグメントの整数個で、単一セグメントが maxChars を超える場合はそれだけで1チャンク。
+ */
+export interface BatchLimits {
+  /** 1 呼び出しの最大セグメント数。 */
+  maxItems: number;
+  /** 1 呼び出しの最大合計文字数（source 文字数の和）。 */
+  maxChars: number;
+}
+
+/** 既定上限。小さい文書では従来どおり「言語グループ＝1バッチ」になる程度に緩い（DeepL 寄り）。 */
+export const DEFAULT_BATCH_LIMITS: BatchLimits = { maxItems: 50, maxChars: 120_000 };
+
+/**
+ * セグメント列を **maxItems / maxChars でチャンク分割**する（順序保持・境界不可分）。
+ * 貪欲に詰め、次を足すと上限超過になる手前で切る。単一セグメントが maxChars 超でも
+ * 分割せず単独チャンクにする（段落テキストは割らない）。
+ */
+export function chunkBySegments(segs: IRSegment[], limits: BatchLimits): IRSegment[][] {
+  const chunks: IRSegment[][] = [];
+  let cur: IRSegment[] = [];
+  let curChars = 0;
+  for (const s of segs) {
+    const len = s.text.source.length;
+    const exceeds =
+      cur.length > 0 && (cur.length >= limits.maxItems || curChars + len > limits.maxChars);
+    if (exceeds) {
+      chunks.push(cur);
+      cur = [];
+      curChars = 0;
+    }
+    cur.push(s);
+    curChars += len;
+  }
+  if (cur.length > 0) chunks.push(cur);
+  return chunks;
+}
+
 export interface TranslateDtirOptions {
   /** 既定は dtir.language.target。 */
   targetLang?: string;
@@ -75,13 +116,17 @@ export interface TranslateDtirOptions {
   evaluator?: Evaluator;
   /** translation.engine に入れる名前。 */
   engineName?: string;
+  /** バッチのサイズ上限（既定 DEFAULT_BATCH_LIMITS）。 */
+  limits?: BatchLimits;
 }
 
 export interface TranslateStats {
   /** 実際に翻訳した段落数。 */
   translated: number;
-  /** バッチ呼び出し回数（＝言語グループ数）。 */
+  /** バッチ呼び出し回数（＝言語グループ数 × サイズチャンク数の総和）。 */
   batchCalls: number;
+  /** サイズ上限で分割が起きた（batchCalls > 言語グループ数の）回数。 */
+  chunked: number;
   /** 評価した段落数。 */
   evaluated: number;
 }
@@ -100,30 +145,37 @@ export async function translateDtir(
   const engine = options.engineName ?? 'deepl';
   const now = () => new Date().toISOString();
 
+  const limits = options.limits ?? DEFAULT_BATCH_LIMITS;
   const groups = groupForTranslation(dtir);
   let translated = 0;
   let batchCalls = 0;
+  let chunked = 0;
 
   for (const [group, segs] of groups) {
-    const texts = segs.map((s) => s.text.source);
     const sourceLang = group === '' ? null : group;
-    const out = await translator.translateBatch(texts, { sourceLang, targetLang: target });
-    batchCalls++;
-    if (out.length !== texts.length) {
-      throw new Error(
-        `境界破壊: batch 入力 ${texts.length} 件に対し戻り ${out.length} 件（group=${group}）`,
-      );
+    // 言語グループをサイズ上限でチャンク化（長文の単一巨大バッチを防ぐ）。
+    const chunks = chunkBySegments(segs, limits);
+    if (chunks.length > 1) chunked += chunks.length - 1;
+    for (const chunk of chunks) {
+      const texts = chunk.map((s) => s.text.source);
+      const out = await translator.translateBatch(texts, { sourceLang, targetLang: target });
+      batchCalls++;
+      if (out.length !== texts.length) {
+        throw new Error(
+          `境界破壊: batch 入力 ${texts.length} 件に対し戻り ${out.length} 件（group=${group}）`,
+        );
+      }
+      chunk.forEach((s, i) => {
+        s.translation = {
+          text: out[i],
+          engine,
+          sourceLangUsed: sourceLang,
+          targetLang: target,
+          at: now(),
+        };
+        translated++;
+      });
     }
-    segs.forEach((s, i) => {
-      s.translation = {
-        text: out[i],
-        engine,
-        sourceLangUsed: sourceLang,
-        targetLang: target,
-        at: now(),
-      };
-      translated++;
-    });
   }
 
   let evaluated = 0;
@@ -137,7 +189,7 @@ export async function translateDtir(
   }
 
   dtir.language.target = target;
-  return { dtir, stats: { translated, batchCalls, evaluated } };
+  return { dtir, stats: { translated, batchCalls, chunked, evaluated } };
 }
 
 // ---------------------------------------------------------------------------
