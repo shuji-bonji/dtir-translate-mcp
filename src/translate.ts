@@ -150,10 +150,20 @@ function toDeeplTarget(bcp47: string): string {
  * まとめる（DeepL の配列入力＝境界保持）。API キーは呼び出し側が渡す。
  */
 export class DeeplHttpTranslator implements Translator {
+  private readonly apiUrl: string;
   constructor(
     private readonly apiKey: string,
-    private readonly apiUrl = 'https://api-free.deepl.com',
-  ) {}
+    apiUrl?: string,
+  ) {
+    // apiUrl 未指定時はキー末尾 ":fx" で Free/Pro エンドポイントを自動判定する
+    // （DeepL 公式 SDK と同方式。Free キーは ":fx" で終わる）。明示指定が優先。
+    this.apiUrl = (
+      apiUrl ??
+      (apiKey.trim().endsWith(':fx')
+        ? 'https://api-free.deepl.com'
+        : 'https://api.deepl.com')
+    ).replace(/\/$/, '');
+  }
 
   async translateBatch(texts: string[], opts: TranslateBatchOptions): Promise<string[]> {
     if (texts.length === 0) return [];
