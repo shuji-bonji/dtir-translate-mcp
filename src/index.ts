@@ -97,6 +97,13 @@ server.tool(
       .positive()
       .optional()
       .describe('1バッチの最大合計文字数（既定 deepl=120000 / llm=4000）。セグメント境界は割らない'),
+    inlineFormatting: z
+      .enum(['collapse', 'runs'])
+      .optional()
+      .describe(
+        '段内書式の扱い。collapse(既定)=先頭ランへ集約／runs=インラインタグ翻訳で' +
+          'ラン別訳を復元し太字・色・リンクを保持（復元失敗時は自動で collapse）',
+      ),
   },
   async (args) => {
     try {
@@ -110,6 +117,7 @@ server.tool(
         targetLang: args.targetLang,
         engineName: engine,
         limits: resolveLimits(engine, args.maxItems, args.maxChars),
+        inlineFormatting: args.inlineFormatting,
       });
       return { content: [{ type: 'text', text: JSON.stringify({ engine, stats, dtir: out }) }] };
     } catch (e) {

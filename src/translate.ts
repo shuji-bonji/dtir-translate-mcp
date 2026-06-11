@@ -30,10 +30,20 @@ export {
 } from './glossary.js';
 import { type Glossary, resolveDeeplId, glossaryToTsv } from './glossary.js';
 
+// 段内書式保持（脱collapse）— インラインタグ変換。
+export { wrapRunsMarkup, parseRunsMarkup, stripMarkup } from './markup.js';
+import { wrapRunsMarkup, parseRunsMarkup, stripMarkup } from './markup.js';
+
 export interface TranslateBatchOptions {
   /** BCP47。null/未指定でエンジン自動判定。 */
   sourceLang?: string | null;
   targetLang: string;
+  /**
+   * true のとき各 text は `<x id="i">…</x>` のインラインタグを含むマークアップ。
+   * エンジンはタグを保持・移動して返す（DeepL tag_handling=xml / LLM へのタグ保持指示）。
+   * 段内書式保持（脱collapse）で使う。
+   */
+  markup?: boolean;
 }
 
 /** 翻訳エンジン抽象。**配列長を保つ**こと（境界保持の契約）。 */
@@ -118,6 +128,13 @@ export interface TranslateDtirOptions {
   engineName?: string;
   /** バッチのサイズ上限（既定 DEFAULT_BATCH_LIMITS）。 */
   limits?: BatchLimits;
+  /**
+   * 段内書式（太字・色・リンク）の扱い。
+   *  - 'collapse'（既定）: 段落全体を素のテキストで翻訳。writer は先頭ランへ集約（書式喪失）。
+   *  - 'runs': 複数ランの段落をインラインタグで翻訳し、訳をラン別に復元（translation.runTexts）。
+   *    writer が各ランの rPr を保って分配できる。タグ復元に失敗した段落は collapse にフォールバック。
+   */
+  inlineFormatting?: 'collapse' | 'runs';
 }
 
 export interface TranslateStats {
@@ -146,36 +163,88 @@ export async function translateDtir(
   const now = () => new Date().toISOString();
 
   const limits = options.limits ?? DEFAULT_BATCH_LIMITS;
+  const useRuns = options.inlineFormatting === 'runs';
   const groups = groupForTranslation(dtir);
   let translated = 0;
   let batchCalls = 0;
   let chunked = 0;
 
-  for (const [group, segs] of groups) {
-    const sourceLang = group === '' ? null : group;
-    // 言語グループをサイズ上限でチャンク化（長文の単一巨大バッチを防ぐ）。
+  /** マークアップ翻訳対象（複数ラン＋オフセットあり）か。 */
+  const isMultiRun = (s: IRSegment): boolean =>
+    useRuns && !!s.text.runs && s.text.runs.length > 1;
+
+  /**
+   * セグメント群を render（送信テキスト）／apply（戻り適用）でチャンク翻訳する。
+   * markup=true のときエンジンにインラインタグを解釈させる。
+   */
+  const runPass = async (
+    segs: IRSegment[],
+    sourceLang: string | null,
+    render: (s: IRSegment) => string,
+    apply: (s: IRSegment, returned: string) => void,
+    markup: boolean,
+  ): Promise<void> => {
+    if (segs.length === 0) return;
     const chunks = chunkBySegments(segs, limits);
     if (chunks.length > 1) chunked += chunks.length - 1;
     for (const chunk of chunks) {
-      const texts = chunk.map((s) => s.text.source);
-      const out = await translator.translateBatch(texts, { sourceLang, targetLang: target });
+      const texts = chunk.map(render);
+      const out = await translator.translateBatch(texts, { sourceLang, targetLang: target, markup });
       batchCalls++;
       if (out.length !== texts.length) {
         throw new Error(
-          `境界破壊: batch 入力 ${texts.length} 件に対し戻り ${out.length} 件（group=${group}）`,
+          `境界破壊: batch 入力 ${texts.length} 件に対し戻り ${out.length} 件（markup=${markup}）`,
         );
       }
       chunk.forEach((s, i) => {
+        apply(s, out[i]);
+        translated++;
+      });
+    }
+  };
+
+  for (const [group, segs] of groups) {
+    const sourceLang = group === '' ? null : group;
+    const plain = segs.filter((s) => !isMultiRun(s));
+    const marked = segs.filter((s) => isMultiRun(s));
+
+    // 素テキスト（単一ラン or collapse モード）
+    await runPass(
+      plain,
+      sourceLang,
+      (s) => s.text.source,
+      (s, returned) => {
         s.translation = {
-          text: out[i],
+          text: returned,
           engine,
           sourceLangUsed: sourceLang,
           targetLang: target,
           at: now(),
         };
-        translated++;
-      });
-    }
+      },
+      false,
+    );
+
+    // マークアップ翻訳（複数ラン・runs モード）→ ラン別訳文を復元
+    await runPass(
+      marked,
+      sourceLang,
+      (s) => wrapRunsMarkup(s.text.source, s.text.runs ?? []),
+      (s, returned) => {
+        const runTexts = parseRunsMarkup(returned, (s.text.runs ?? []).length);
+        const base = {
+          engine,
+          sourceLangUsed: sourceLang,
+          targetLang: target,
+          at: now(),
+        };
+        // 復元できれば runTexts を付与（writer がラン分配）。失敗時はタグ除去した素訳（collapse）。
+        s.translation = runTexts
+          ? { text: runTexts.join(''), ...base, runTexts }
+          : { text: stripMarkup(returned), ...base };
+      },
+      true,
+    );
   }
 
   let evaluated = 0;
@@ -242,6 +311,11 @@ export class DeeplHttpTranslator implements Translator {
     // 用語集: source 言語に対応する glossary_id があれば適用（DeepL は source 必須）。
     const glossaryId = resolveDeeplId(this.glossary, opts.sourceLang ?? null);
     if (glossaryId && opts.sourceLang) body.set('glossary_id', glossaryId);
+    // 段内書式保持: <x> インラインタグを DeepL に解釈・移動させる。
+    if (opts.markup) {
+      body.set('tag_handling', 'xml');
+      body.set('outline_detection', '0');
+    }
 
     const res = await this.fetchImpl(`${this.apiUrl}/v2/translate`, {
       method: 'POST',

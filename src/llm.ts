@@ -58,6 +58,16 @@ function buildUserPrompt(
     hint,
     'Rules: preserve meaning and tone; do NOT translate numbers, currency amounts, codes, URLs or identifiers (keep them verbatim); translate every item even if short.',
   ];
+  if (opts.markup) {
+    // 段内書式保持: <x id="i">…</x> タグを訳語の対応スパンへ移動させ、欠落/追加させない。
+    lines.push(
+      'Some items contain inline tags like <x id="0">...</x>. These mark formatting spans. ' +
+        'Translate ONLY the text inside the tags and KEEP every tag: same set of ids, each <x id="k"> ' +
+        'paired with its </x>, wrapping the translated span that corresponds to the source span. ' +
+        'Do NOT add, drop, or renumber ids, and put NO text outside the tags. Keep the tags verbatim ' +
+        '(do not escape them).',
+    );
+  }
   if (glossaryEntries.length > 0) {
     // 用語集の強制: 出現箇所では必ず指定の訳語を使わせる（用語一貫性）。
     lines.push(
