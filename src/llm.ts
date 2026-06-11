@@ -12,6 +12,7 @@
  *  - それでも揃わなければ例外（translateDtir の境界保証を満たすため）
  */
 import type { TranslateBatchOptions, Translator } from './translate.js';
+import { type Glossary, type TermPair, resolveEntries } from './glossary.js';
 
 export interface LlmTranslatorOptions {
   /** モデル名（例: 'gpt-4o-mini' / 'qwen2.5:7b' / 'gemma2'）。 */
@@ -30,6 +31,8 @@ export interface LlmTranslatorOptions {
   timeoutMs?: number;
   /** system プロンプト上書き（任意）。 */
   systemPrompt?: (targetLang: string) => string;
+  /** 用語集（辞書）。source 言語に対応する用語対をプロンプトへ注入する。 */
+  glossary?: Glossary;
   /** fetch 差し替え（テスト用）。 */
   fetchImpl?: typeof fetch;
 }
@@ -42,17 +45,34 @@ interface ChatMessage {
 const defaultSystem = (_target: string): string =>
   'You are a professional document translator. Output strictly valid JSON only. Never add commentary, notes, or markdown fences.';
 
-function buildUserPrompt(texts: string[], opts: TranslateBatchOptions): string {
+function buildUserPrompt(
+  texts: string[],
+  opts: TranslateBatchOptions,
+  glossaryEntries: TermPair[] = [],
+): string {
   const hint = opts.sourceLang
     ? `Source language hint: ${opts.sourceLang} (the items may be mixed-language; translate every item regardless).`
     : 'The items may be in mixed languages; translate every item regardless of its source language.';
-  return [
+  const lines = [
     `Translate each item in "items" into ${opts.targetLang}.`,
     hint,
     'Rules: preserve meaning and tone; do NOT translate numbers, currency amounts, codes, URLs or identifiers (keep them verbatim); translate every item even if short.',
+  ];
+  if (glossaryEntries.length > 0) {
+    // 用語集の強制: 出現箇所では必ず指定の訳語を使わせる（用語一貫性）。
+    lines.push(
+      'Glossary (MANDATORY): whenever a source term below appears in an item, you MUST render it ' +
+        'with the exact target term given. Match case-insensitively; keep the given target verbatim.',
+    );
+    for (const e of glossaryEntries) {
+      lines.push(`  - ${JSON.stringify(e.source)} => ${JSON.stringify(e.target)}`);
+    }
+  }
+  lines.push(
     `Return JSON only in this exact shape: {"translations": [ /* exactly ${texts.length} strings, SAME order as items */ ]}.`,
     `items: ${JSON.stringify(texts)}`,
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 /** assistant の本文から訳の配列を取り出す（JSONモード/素のテキスト両対応）。 */
@@ -105,9 +125,10 @@ export class LlmTranslator implements Translator {
 
   async translateBatch(texts: string[], opts: TranslateBatchOptions): Promise<string[]> {
     if (texts.length === 0) return [];
+    const glossaryEntries = resolveEntries(this.opts.glossary, opts.sourceLang ?? null);
     const messages: ChatMessage[] = [
       { role: 'system', content: this.systemPrompt(opts.targetLang) },
-      { role: 'user', content: buildUserPrompt(texts, opts) },
+      { role: 'user', content: buildUserPrompt(texts, opts, glossaryEntries) },
     ];
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {

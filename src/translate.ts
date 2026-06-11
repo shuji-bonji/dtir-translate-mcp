@@ -20,6 +20,16 @@ import type {
 // LLM 翻訳エンジン（OpenAI 互換・クラウド/ローカル両対応）を同じサブパスから提供。
 export { LlmTranslator, parseTranslations, type LlmTranslatorOptions } from './llm.js';
 
+// 用語集（辞書）— LLM/DeepL 双方へ橋渡しする単一の真実源。
+export {
+  resolveEntries,
+  resolveDeeplId,
+  glossaryToTsv,
+  type Glossary,
+  type TermPair,
+} from './glossary.js';
+import { type Glossary, resolveDeeplId, glossaryToTsv } from './glossary.js';
+
 export interface TranslateBatchOptions {
   /** BCP47。null/未指定でエンジン自動判定。 */
   sourceLang?: string | null;
@@ -151,9 +161,14 @@ function toDeeplTarget(bcp47: string): string {
  */
 export class DeeplHttpTranslator implements Translator {
   private readonly apiUrl: string;
+  private readonly fetchImpl: typeof fetch;
   constructor(
     private readonly apiKey: string,
     apiUrl?: string,
+    /** 用語集（source 言語ごとの DeepL glossary_id を適用）。 */
+    private readonly glossary?: Glossary,
+    /** fetch 差し替え（テスト用）。 */
+    fetchImpl?: typeof fetch,
   ) {
     // apiUrl 未指定時はキー末尾 ":fx" で Free/Pro エンドポイントを自動判定する
     // （DeepL 公式 SDK と同方式。Free キーは ":fx" で終わる）。明示指定が優先。
@@ -163,6 +178,7 @@ export class DeeplHttpTranslator implements Translator {
         ? 'https://api-free.deepl.com'
         : 'https://api.deepl.com')
     ).replace(/\/$/, '');
+    this.fetchImpl = fetchImpl ?? fetch;
   }
 
   async translateBatch(texts: string[], opts: TranslateBatchOptions): Promise<string[]> {
@@ -171,8 +187,11 @@ export class DeeplHttpTranslator implements Translator {
     for (const t of texts) body.append('text', t);
     if (opts.sourceLang) body.set('source_lang', toDeeplSource(opts.sourceLang));
     body.set('target_lang', toDeeplTarget(opts.targetLang));
+    // 用語集: source 言語に対応する glossary_id があれば適用（DeepL は source 必須）。
+    const glossaryId = resolveDeeplId(this.glossary, opts.sourceLang ?? null);
+    if (glossaryId && opts.sourceLang) body.set('glossary_id', glossaryId);
 
-    const res = await fetch(`${this.apiUrl}/v2/translate`, {
+    const res = await this.fetchImpl(`${this.apiUrl}/v2/translate`, {
       method: 'POST',
       headers: {
         Authorization: `DeepL-Auth-Key ${this.apiKey}`,
@@ -186,6 +205,55 @@ export class DeeplHttpTranslator implements Translator {
     const json = (await res.json()) as { translations: { text: string }[] };
     return json.translations.map((t) => t.text);
   }
+
+  /**
+   * inline な用語対から DeepL glossary を作成し glossary_id を返す（事前準備用）。
+   * 得た id を Glossary.deeplIds[sourceLang] に入れて DeeplHttpTranslator へ渡す。
+   * DeepL の言語コードは2文字（de/en/fr…）。glossary は source→target ペアに紐づく。
+   */
+  static async createDeeplGlossary(
+    apiKey: string,
+    args: {
+      name: string;
+      sourceLang: string;
+      targetLang: string;
+      entries: TermPairLike[];
+      apiUrl?: string;
+      fetchImpl?: typeof fetch;
+    },
+  ): Promise<string> {
+    const fetchImpl = args.fetchImpl ?? fetch;
+    const apiUrl = (
+      args.apiUrl ??
+      (apiKey.trim().endsWith(':fx') ? 'https://api-free.deepl.com' : 'https://api.deepl.com')
+    ).replace(/\/$/, '');
+    const body = new URLSearchParams();
+    body.set('name', args.name);
+    body.set('source_lang', toDeeplSource(args.sourceLang));
+    body.set('target_lang', toDeeplSource(args.targetLang));
+    body.set('entries', glossaryToTsv(args.entries));
+    body.set('entries_format', 'tsv');
+
+    const res = await fetchImpl(`${apiUrl}/v2/glossaries`, {
+      method: 'POST',
+      headers: {
+        Authorization: `DeepL-Auth-Key ${apiKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+    if (!res.ok) {
+      throw new Error(`DeepL glossaries API ${res.status} ${res.statusText}`);
+    }
+    const json = (await res.json()) as { glossary_id: string };
+    return json.glossary_id;
+  }
+}
+
+/** createDeeplGlossary が受け取る用語対（TermPair と同形）。 */
+interface TermPairLike {
+  source: string;
+  target: string;
 }
 
 /**

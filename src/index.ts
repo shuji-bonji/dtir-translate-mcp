@@ -14,12 +14,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { DeeplHttpTranslator, LlmTranslator, translateDtir, type Translator } from './translate.js';
+import {
+  DeeplHttpTranslator,
+  LlmTranslator,
+  translateDtir,
+  type Glossary,
+  type Translator,
+} from './translate.js';
 import type { IRDocument } from '@shuji-bonji/doc-translation-ir';
 
 const server = new McpServer({ name: 'dtir-translate-mcp', version: '0.0.1' });
 
-function makeTranslator(engine: 'deepl' | 'llm', apiUrl?: string): Translator {
+function makeTranslator(
+  engine: 'deepl' | 'llm',
+  apiUrl?: string,
+  glossary?: Glossary,
+): Translator {
   if (engine === 'llm') {
     const model = process.env.LLM_MODEL;
     if (!model) throw new Error('engine=llm だが LLM_MODEL が未設定です');
@@ -28,11 +38,12 @@ function makeTranslator(engine: 'deepl' | 'llm', apiUrl?: string): Translator {
       baseUrl: process.env.LLM_BASE_URL,
       apiKey: process.env.LLM_API_KEY,
       jsonMode: process.env.LLM_JSON_MODE !== 'false',
+      glossary,
     });
   }
   const key = process.env.DEEPL_API_KEY;
   if (!key) throw new Error('engine=deepl だが DEEPL_API_KEY が未設定です');
-  return new DeeplHttpTranslator(key, apiUrl);
+  return new DeeplHttpTranslator(key, apiUrl, glossary);
 }
 
 server.tool(
@@ -47,11 +58,21 @@ server.tool(
       .optional()
       .describe('翻訳エンジン（既定: LLM_MODEL があれば llm、なければ deepl）'),
     apiUrl: z.string().optional().describe('DeepL API ベースURL（既定 https://api-free.deepl.com）'),
+    glossaryJson: z
+      .string()
+      .optional()
+      .describe(
+        '用語集 Glossary の JSON（{target, bySource:{lang:[{source,target}]}, deeplIds?:{lang:id}}）。' +
+          'LLM はプロンプト注入、DeepL は deeplIds の glossary_id を source 言語別に適用。',
+      ),
   },
   async (args) => {
     try {
       const engine = args.engine ?? (process.env.LLM_MODEL ? 'llm' : 'deepl');
-      const translator = makeTranslator(engine, args.apiUrl);
+      const glossary = args.glossaryJson
+        ? (JSON.parse(args.glossaryJson) as Glossary)
+        : undefined;
+      const translator = makeTranslator(engine, args.apiUrl, glossary);
       const dtir = JSON.parse(args.dtirJson) as IRDocument;
       const { dtir: out, stats } = await translateDtir(dtir, translator, {
         targetLang: args.targetLang,
