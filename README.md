@@ -1,3 +1,5 @@
+**日本語** | [English](./README.en.md)
+
 # @shuji-bonji/dtir-translate-mcp
 
 DTIR の `translation`（と任意で `quality`）を埋める、パイプライン中央ステージの MCP サーバ。
