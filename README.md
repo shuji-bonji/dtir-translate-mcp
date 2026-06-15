@@ -81,6 +81,40 @@ const { dtir, stats } = await translateDtir(dtir, t, { targetLang: 'en-GB' });
 **戻り配列長＝入力長を検証・是正リトライ**する。ローカルの弱いモデルでは xCOMET 品質ゲートと
 組み合わせる（再翻訳ループは `dtir-docx-pipeline` 側）。
 
+## エラーハンドリング方針
+
+全 Translator で**「長さを保つ、保てなければ throw（黙ってフォールバックしない）」**で統一している。
+
+| 層 | 役割 |
+| --- | --- |
+| Translator 実装 | 配列長を保つ。`LlmTranslator` は件数不一致を**是正リトライ→尽きたら例外**、`DeeplHttpTranslator` は HTTP/応答形エラーで例外（DeepL の配列契約に委任）、`StaticMapTranslator` は常に1:1 |
+| `translateDtir`（`runPass`） | **全 Translator 共通の関所**。各バッチ後に戻り長 ≠ 入力長を検出したら『境界破壊』で例外。実装が長さ保証を怠ってもここで捕まる |
+| MCP 境界（`index.ts`） | try/catch で `isError:true` に変換。内部は throw、外向きは isError |
+
+ポイントは**フォールバックは Translator の責務ではない**こと。短い/壊れた訳で妥協せず明示的に失敗させ、
+下流が誤訳混入に気づけるようにする。唯一の「フォールバック」は runs モードのタグ復元失敗時の collapse
+（書式忠実度の別軸・fail-safe）であり、件数のフォールバックではない。新しい Translator を足すときも
+この方針（長さ保証 or throw）を守ること。
+
+## group=null（言語未確定）セグメントの扱い
+
+reader が言語を確定できなかった（明示タグ無し＋検出失敗＋既定なし）セグメントは `group=null`。
+これらは `''` キーに集約され、**`sourceLang=null`＝エンジンの自動判定に委ねる**。
+異なる実言語の未確定セグメントが **1 バッチに同居**する点に注意。
+
+| エンジン | 挙動 | glossary |
+| --- | --- | --- |
+| **DeepL** | `source_lang` を送らず**テキスト毎に自動判定**（堅牢で実害は小さい） | source 必須のため **適用されない** |
+| **LLM** | 混在言語バッチを「各自で言語を判定して訳せ」と暗黙指示する形になり、**品質がプロンプト/モデル性能に依存** | `'*'`（source 非依存）の用語対のみ適用。言語別用語は落ちる |
+
+実務的な含意:
+
+- **DeepL なら group=null でもほぼ問題なく動く**（ただし用語集を効かせたい場合は source を確定させること）。
+- **LLM、特にローカルの弱いモデルでは group=null が多いと品質が不安定**になりやすい。
+  対策は (a) reader 側の言語解決精度を上げて group=null を減らす、(b) xCOMET 品質ゲート＋再翻訳で底上げ、
+  (c) ジョブ側で source 言語を宣言（`declared`）する、のいずれか。
+- ＝ **group=null を減らすほど LLM 経路の品質が安定する**。reader の `language` 解決はこの上流対策にあたる。
+
 ## MCP サーバとして接続
 
 ビルド（**build 時だけ** `doc-translation-ir` を隣に置く。実行時は型のみ依存で不要）:

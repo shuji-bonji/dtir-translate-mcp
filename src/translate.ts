@@ -46,7 +46,22 @@ export interface TranslateBatchOptions {
   markup?: boolean;
 }
 
-/** 翻訳エンジン抽象。**配列長を保つ**こと（境界保持の契約）。 */
+/**
+ * 翻訳エンジン抽象。
+ *
+ * **エラーハンドリング方針（全実装で統一）:**
+ *  1. **配列長を保つ** — 戻り `string[]` は入力 `texts` と同数・同順（境界保持の契約）。
+ *  2. **保てなければ throw**（黙ってフォールバックしない）。例: LlmTranslator は件数が
+ *     合うまで是正リトライし、尽きたら例外（`llm.ts`）。「短い/壊れた結果で妥協」より
+ *     「明示的に失敗」を選ぶ＝下流が誤訳混入に気づける。
+ *  3. **転送/HTTP エラーも throw**（`!res.ok` で例外）。
+ *  4. 念のため `translateDtir` の `runPass` が**全 Translator 共通の関所**として
+ *     戻り長を再検証し、違反を例外化する（実装が長さ保証を怠ってもここで捕まる）。
+ *  5. MCP 境界（`index.ts`）が try/catch で `isError` に変換する。内部は throw、外向きは isError。
+ *
+ * 新しい Translator を足すときは「長さを保つ or throw」を守ること。フォールバックは
+ * このレイヤーの責務ではない（書式の collapse 等は orchestration 側の別軸）。
+ */
 export interface Translator {
   translateBatch(texts: string[], opts: TranslateBatchOptions): Promise<string[]>;
 }
@@ -64,7 +79,19 @@ export interface Evaluator {
 
 /**
  * translatable セグメントを group(source言語) でまとめる。
- * group が null のものは '' キー（＝エンジン自動判定）に集約。
+ *
+ * **group=null（言語未確定）の扱い**: `'' ` キーに集約し、後段で `sourceLang=null`
+ * として翻訳エンジンに渡す＝**エンジンの自動判定に委ねる**。group=null は reader で
+ * `language.value` が確定しなかったセグメント（明示タグ無し＋検出失敗＋既定なし）。
+ * 異なる実言語の未確定セグメントが**1バッチに同居**する点に注意。
+ *
+ * エンジン別の帰結（詳細は README「group=null の扱い」）:
+ *  - **DeepL**: `source_lang` を送らず**テキスト毎に自動判定**（堅牢）。ただし
+ *    DeepL glossary は source 必須のため **glossary が効かない**。
+ *  - **LLM**: 混在言語バッチを「各自で言語判定して訳せ」と暗黙指示する形になり、
+ *    **品質がプロンプト/モデル性能に依存**。glossary は `'*'`（source 非依存）分のみ適用。
+ *
+ * ＝ group=null を減らす（reader の言語解決精度を上げる）ほど、特に LLM の品質が安定する。
  */
 export function groupForTranslation(dtir: IRDocument): Map<string, IRSegment[]> {
   const groups = new Map<string, IRSegment[]>();
@@ -204,6 +231,8 @@ export async function translateDtir(
   };
 
   for (const [group, segs] of groups) {
+    // group='' は言語未確定の集約キー → sourceLang=null でエンジン自動判定に委ねる
+    // （DeepL=テキスト毎 auto・glossary不可 / LLM=混在バッチでモデル依存）。
     const sourceLang = group === '' ? null : group;
     const plain = segs.filter((s) => !isMultiRun(s));
     const marked = segs.filter((s) => isMultiRun(s));
@@ -328,7 +357,12 @@ export class DeeplHttpTranslator implements Translator {
     if (!res.ok) {
       throw new Error(`DeepL API ${res.status} ${res.statusText}`);
     }
-    const json = (await res.json()) as { translations: { text: string }[] };
+    const json = (await res.json()) as { translations?: { text: string }[] };
+    // 200 でも想定外の応答形（translations 配列なし）なら、不明瞭な TypeError ではなく
+    // 明示エラーにする（境界保持の契約 = 配列長検証の前提を守る）。
+    if (!Array.isArray(json.translations)) {
+      throw new Error('DeepL: 予期しない応答形（translations 配列がありません）');
+    }
     return json.translations.map((t) => t.text);
   }
 
